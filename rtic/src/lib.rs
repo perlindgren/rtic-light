@@ -13,69 +13,76 @@ use syn::{
 
 use quote::{quote, TokenStreamExt};
 
+// Container for comma separated sequences of type T
+pub(crate) struct CommaSep<T> {
+    pub elems: Vec<T>,
+}
+
+impl<T> CommaSep<T> {
+    fn remove_first(&mut self) -> Option<T> {
+        if self.elems.is_empty() {
+            None
+        } else {
+            let r = self.elems.remove(0);
+            Some(r)
+        }
+    }
+}
+
+impl<T> Parse for CommaSep<T>
+where
+    T: Parse,
+{
+    fn parse(input: ParseStream) -> parse::Result<Self> {
+        let p: Punctuated<T, Token![,]> = input.parse_terminated(T::parse)?;
+        let mut elems = vec![];
+        for e in p {
+            elems.push(e)
+        }
+        Ok(Self { elems })
+    }
+}
+
 fn parse(attr: TokenStream2, item: TokenStream2) -> Result<TokenStream2, syn::parse::Error> {
     // println!("attr: {:?}", attr);
     let mut attrs: Attr = syn::parse2(attr)?;
     let module: Module = syn::parse2(item)?;
     let mut next_pass = None;
-    // let mut next_passes = None;
-    for kv in &mut attrs.attrs {
-        match &*kv.0.to_string() {
+    let mut next_passes = vec![];
+    let mut other_attrs = vec![];
+    for (id, e) in &mut attrs.attrs {
+        match &*id.to_string() {
             "passes" => {
-                println!("here we go");
-                // println!("r {:?}", e.right);
+                println!("passes found");
+                println!("e {:?}", e);
+
+                match e {
+                    Expr::Array(a) => {
+                        let a = a.elems.clone();
+                        println!("a---- {:?}", a);
+                        let q = quote! {#a};
+                        let mut idents = syn::parse::<CommaSep<Ident>>(q.into())?;
+                        println!("idents {:?}", idents.elems);
+                        next_pass = idents.remove_first();
+                        next_passes = idents.elems;
+                    }
+                    _ => panic!("RTIC ICE"),
+                }
             }
-            _ => {}
+            _ => other_attrs.push((id, e)),
         }
-        //      if &*id == "passes" {
-        //                         match &mut *e.right {
-        //                             Expr::Array(a) => {
-        //                                 if let Some(e) = a.elems.pop() {
-        //                                     let e = e.into_value();
-        //                                     match e {
-        //                                         Expr::Path(p) => match p.path.get_ident() {
-        //                                             Some(i) => {
-        //                                                 next_pass = Some(i.clone());
-        //                                                 next_passes = Some(a);
-        //                                             }
-        //                                             _ => {
-        //                                                 println!("error identifier");
-        //                                             }
-        //                                         },
-        //                                         _ => {
-        //                                             println!("expected identifier")
-        //                                         }
-        //                                     }
-        //                                 } else {
-        //                                     println!("error no next pass");
-        //                                 }
-        //                             }
-        //                             _ => {
-        //                                 println!("expected []")
-        //                             }
-        //                         }
-        //                     }
-        //                 }
-        //                 _ => {
-        //                     println!("skipping attribute")
-        //                 }
-        //             },
-        //             _ => {
-        //                 println!("expected identifier")
-        //             }
-        //         }
-        //     }
-        //     _ => {}
-        // }
     }
 
-    let next_pass: Ident = next_pass.unwrap();
-    // let next_passes : = next_passes.unwrap();
+    let next_pass = next_pass.unwrap();
     let items = module.items;
 
+    let mut attrs = vec![];
+    for (id, expr) in other_attrs {
+        attrs.push(quote! {#id = #expr,});
+    }
+
     let ts = quote! {
-        // #[ #next_pass(passes = #next_passes)]
-        #[passes = [pass2]]
+        #[ #next_pass(passes = [#(#next_passes)*], #(#attrs)*)]
         mod pass1 {
 
             #(#items)*
@@ -103,7 +110,7 @@ impl Parse for Attr {
             let l = quote! {#l};
 
             let id = syn::parse::<Ident>(l.into())?;
-            println!("ident {}, {:?}", id, (*ea.right).clone());
+            println!("ident {}, {:?}", id, ea.right);
             attrs.push((id, *ea.right));
         }
 
@@ -133,6 +140,7 @@ impl Parse for Module {
 
         let _mod_token: Token![mod] = input.parse()?;
         let _ident: Ident = input.parse()?;
+        // bad this might panic
         let _brace_token: Brace = braced!(content in input);
         let items = content.call(parse_items)?;
 

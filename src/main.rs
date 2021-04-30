@@ -10,5 +10,3 @@ mod b {
         println!("{}", answer());
     }
 }
-
-fn main() {}
