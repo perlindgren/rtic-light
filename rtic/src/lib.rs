@@ -71,10 +71,12 @@ fn parse(attr: TokenStream2, item: TokenStream2) -> Result<TokenStream2, syn::pa
 
     let next_pass = next_pass.unwrap();
     let next_passes = next_passes.unwrap();
+    let items = module.items;
 
     let ts = quote! {
         #[ #next_pass(passes = #next_passes)]
         mod pass1 {
+            #(#items)*
 
         }
     };
