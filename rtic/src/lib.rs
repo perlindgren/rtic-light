@@ -88,7 +88,7 @@ fn parse(attr: TokenStream2, item: TokenStream2) -> Result<TokenStream2, syn::pa
 
 // Attributes are comma separated Expr:s
 pub(crate) struct Attr {
-    pub attrs: Vec<(Ident, syn::ExprArray)>,
+    pub attrs: Vec<(Ident, Expr)>,
 }
 
 impl Parse for Attr {
@@ -97,25 +97,14 @@ impl Parse for Attr {
             input.parse_terminated(syn::ExprAssign::parse)?;
 
         println!("here");
-        for p in pun {
-            println!("p: {:?}", p.left);
-            let q = p.left;
-            ///let q: proc_macro::TokenStream = quote! {#q}.into();
-            let q = quote! {#q}.into();
-            println!("q {:?}", q);
-            let input = syn::parse::<Ident>(q)?;
-            println!("ident {}", input)
-        }
-
-        println!("---");
-
         let mut attrs = vec![];
+        for ea in pun {
+            let l = ea.left;
+            let l = quote! {#l};
 
-        while !input.is_empty() {
-            let id: Ident = input.parse()?;
-            let _: Token![=] = input.parse()?;
-            let expr_arr: syn::ExprArray = input.parse()?;
-            attrs.push((id, expr_arr))
+            let id = syn::parse::<Ident>(l.into())?;
+            println!("ident {}, {:?}", id, (*ea.right).clone());
+            attrs.push((id, *ea.right));
         }
 
         Ok(Attr { attrs })
