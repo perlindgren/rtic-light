@@ -18,64 +18,66 @@ fn parse(attr: TokenStream2, item: TokenStream2) -> Result<TokenStream2, syn::pa
     let mut attrs: Attr = syn::parse2(attr)?;
     let module: Module = syn::parse2(item)?;
     let mut next_pass = None;
-    let mut next_passes = None;
-    for expr in &mut attrs.attrs {
-        match expr {
-            Expr::Assign(e) => {
-                match &*e.left {
-                    Expr::Path(p) => match p.path.get_ident() {
-                        Some(id) => {
-                            if &*id == "passes" {
-                                println!("here we go");
-                                // println!("r {:?}", e.right);
-                                match &mut *e.right {
-                                    Expr::Array(a) => {
-                                        if let Some(e) = a.elems.pop() {
-                                            let e = e.into_value();
-                                            match e {
-                                                Expr::Path(p) => match p.path.get_ident() {
-                                                    Some(i) => {
-                                                        next_pass = Some(i.clone());
-                                                        next_passes = Some(a);
-                                                    }
-                                                    _ => {
-                                                        println!("error identifier");
-                                                    }
-                                                },
-                                                _ => {
-                                                    println!("expected identifier")
-                                                }
-                                            }
-                                        } else {
-                                            println!("error no next pass");
-                                        }
-                                    }
-                                    _ => {
-                                        println!("expected []")
-                                    }
-                                }
-                            }
-                        }
-                        _ => {
-                            println!("skipping attribute")
-                        }
-                    },
-                    _ => {
-                        println!("expected identifier")
-                    }
-                }
+    // let mut next_passes = None;
+    for kv in &mut attrs.attrs {
+        match &*kv.0.to_string() {
+            "passes" => {
+                println!("here we go");
+                // println!("r {:?}", e.right);
             }
             _ => {}
         }
+        //      if &*id == "passes" {
+        //                         match &mut *e.right {
+        //                             Expr::Array(a) => {
+        //                                 if let Some(e) = a.elems.pop() {
+        //                                     let e = e.into_value();
+        //                                     match e {
+        //                                         Expr::Path(p) => match p.path.get_ident() {
+        //                                             Some(i) => {
+        //                                                 next_pass = Some(i.clone());
+        //                                                 next_passes = Some(a);
+        //                                             }
+        //                                             _ => {
+        //                                                 println!("error identifier");
+        //                                             }
+        //                                         },
+        //                                         _ => {
+        //                                             println!("expected identifier")
+        //                                         }
+        //                                     }
+        //                                 } else {
+        //                                     println!("error no next pass");
+        //                                 }
+        //                             }
+        //                             _ => {
+        //                                 println!("expected []")
+        //                             }
+        //                         }
+        //                     }
+        //                 }
+        //                 _ => {
+        //                     println!("skipping attribute")
+        //                 }
+        //             },
+        //             _ => {
+        //                 println!("expected identifier")
+        //             }
+        //         }
+        //     }
+        //     _ => {}
+        // }
     }
 
-    let next_pass = next_pass.unwrap();
-    let next_passes = next_passes.unwrap();
+    let next_pass: Ident = next_pass.unwrap();
+    // let next_passes : = next_passes.unwrap();
     let items = module.items;
 
     let ts = quote! {
-        #[ #next_pass(passes = #next_passes)]
+        // #[ #next_pass(passes = #next_passes)]
+        #[passes = [pass2]]
         mod pass1 {
+
             #(#items)*
 
         }
@@ -86,12 +88,35 @@ fn parse(attr: TokenStream2, item: TokenStream2) -> Result<TokenStream2, syn::pa
 
 // Attributes are comma separated Expr:s
 pub(crate) struct Attr {
-    pub attrs: Punctuated<Expr, Token![,]>,
+    pub attrs: Vec<(Ident, syn::ExprArray)>,
 }
 
 impl Parse for Attr {
-    fn parse(input: ParseStream<'_>) -> parse::Result<Self> {
-        let attrs = input.parse_terminated(Expr::parse)?;
+    fn parse(input: ParseStream) -> parse::Result<Self> {
+        let pun: Punctuated<syn::ExprAssign, Token![,]> =
+            input.parse_terminated(syn::ExprAssign::parse)?;
+
+        println!("here");
+        for p in pun {
+            println!("p: {:?}", p.left);
+            let q = p.left;
+            ///let q: proc_macro::TokenStream = quote! {#q}.into();
+            let q = quote! {#q}.into();
+            println!("q {:?}", q);
+            let input = syn::parse::<Ident>(q)?;
+            println!("ident {}", input)
+        }
+
+        println!("---");
+
+        let mut attrs = vec![];
+
+        while !input.is_empty() {
+            let id: Ident = input.parse()?;
+            let _: Token![=] = input.parse()?;
+            let expr_arr: syn::ExprArray = input.parse()?;
+            attrs.push((id, expr_arr))
+        }
 
         Ok(Attr { attrs })
     }
