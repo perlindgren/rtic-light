@@ -2,13 +2,14 @@ use syn::{
     braced, /* parenthesized, */
     parse::{self, Parse, ParseStream, Parser},
     punctuated::Punctuated,
+    spanned::Spanned,
     token::Brace,
     Attribute, Expr, ExprAssign, Ident, Item, Result, /*  LitBool, LitInt, Path*/ Token,
 };
 
-use proc_macro2::TokenStream as TokenStream2;
+use proc_macro2::{Punct, TokenStream as TokenStream2};
 
-use quote::quote;
+use quote::{quote, ToTokens};
 
 pub fn parse_attr<'a, T>(
     input: ParseStream<'a>,
@@ -64,6 +65,39 @@ impl Parse for Attrs {
     }
 }
 
+impl<T> Parse for BracedVec<T>
+where
+    T: Parse,
+{
+    fn parse(input: ParseStream) -> Result<Self> {
+        let content;
+        let _brace_token: Brace = braced!(content in input);
+        let p: Punctuated<T, Token![,]> = content.parse_terminated(T::parse)?;
+        let vec: Vec<T> = p.into_iter().map(|v| v).collect();
+        Ok(BracedVec { vec })
+    }
+}
+
+#[derive(Debug)]
+struct IdT<T>
+where
+    T: Parse,
+{
+    id: Ident,
+    expr: T,
+}
+
+impl<T> Parse for IdT<T>
+where
+    T: Parse,
+{
+    fn parse(input: ParseStream) -> Result<Self> {
+        let id: Ident = input.parse()?;
+        let _eq: Token![=] = input.parse()?;
+        let expr: T = input.parse()?;
+        Ok(IdT { id, expr })
+    }
+}
 
 #[derive(Debug)]
 pub struct AppAttr {
@@ -71,22 +105,44 @@ pub struct AppAttr {
     other_attrs: Vec<Attribute>,
 }
 
+#[derive(Debug)]
+struct BracedVec<T>
+where
+    T: Parse,
+{
+    vec: Vec<T>,
+}
 pub fn app_attr(input: TokenStream2) -> Result<AppAttr> {
     let attrs: Attrs = syn::parse2(input)?;
     let mut other_attrs = vec![];
     for attr in attrs.attrs {
-        let q = quote! {#attr};
-        println!("q {:?}", q);
-        println!("---------");
-        println!("ts {:?}", attr.tokens);
-        println!("---------");
-        let e = syn::parse2::<Vec<ExprAssign>>(attr.tokens.clone())?;
-        let e = syn::parse2::<Vec<ExprAssign>>(attr.tokens.clone())?;
+        println!("attr {:?}", attr.tokens);
+        println!("----------");
 
-        // println!("e.left :{:?}", e.left);
-        // println!("e.right :{:?}", e.right);
+        let i: Punctuated<IdT<Ident>, Token![,]> =
+            attr.parse_args_with(Punctuated::parse_terminated)?;
+        //  = attr.parse_args().unwrap();
+        println!("i {:?}", i);
 
-        println!();
+        // let at : Parse::parse2(Attribute::parse_outer, attr.tokens)?;
+        // let p: Punctuated<IdT<Ident>, Token![,]> =
+        //     attr.parse_args_with(Punctuated::parse_terminated)?;
+        // println!("p {:?}", p);
+
+        // for ide in p {
+        //     match &*ide.id.to_string() {
+        //         "passes" => {
+        //             println!("passes found");
+        //             println!("expr {:?}", ide.expr);
+        //             // let t = ide.expr.to_token_stream();
+        //             // let v: BracedVec<Ident> = syn::parse2(t)?;
+        //             // println!("v {:?}", v);
+        //         }
+        //         _ => {}
+        //     }
+        // }
+
+        // println!();
         other_attrs.push(attr);
     }
 
@@ -94,4 +150,14 @@ pub fn app_attr(input: TokenStream2) -> Result<AppAttr> {
         // next_pass: Ident::new(&"hello", syn::span::new()),
         other_attrs,
     })
+}
+
+#[test]
+fn test_app_attr() {
+    let q: TokenStream2 = quote!(#[app(passes = [pass1, pass2], peripherals = true)]);
+    let q: TokenStream2 = quote!(#[app(id = id2)]);
+
+    let v = app_attr(q); // .unwrap();
+
+    // println!("ok {:?}", v);
 }
