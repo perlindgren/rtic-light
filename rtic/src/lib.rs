@@ -4,15 +4,66 @@ use std::fs;
 
 use proc_macro2::TokenStream as TokenStream2;
 use syn::{
-    braced, parenthesized,
+    braced, /* parenthesized, */
     parse::{self, Parse, ParseStream, Parser},
-    punctuated::{self, Punctuated},
+    punctuated::Punctuated,
     token::Brace,
-    Expr, Ident, Item, LitBool, LitInt, Path, Token,
+    Expr, Ident, Item, /*  LitBool, LitInt, Path*/ Token,
 };
 
-use quote::{quote, TokenStreamExt};
+use quote::quote;
+// use quote::TokenStreamExt;
 
+// Helper to parse attributes
+
+fn parse_attr<T>(input: TokenStream2, keyword: &str) -> parse::Result<(T, TokenStream)>
+where
+    T: Parse,
+{
+    (|input: ParseStream<'_>| -> parse::Result<(T, TokenStream)> {
+        let mut ts = vec![];
+        let mut t: Option<T> = None;
+        while !input.is_empty() {
+            let ident: Ident = input.parse()?;
+            let _: Token![=] = input.parse()?;
+            let expr: Expr = input.parse()?;
+
+            match &*ident.to_string() {
+                keyword => {
+                    println!("id found");
+                    if t.is_some() {
+                        return Err(parse::Error::new(ident.span(), "Already defined"));
+                    } else {
+                        let mut e = quote! {#expr};
+                        let p = syn::parse::<T>(e.into())?;
+                        println!("here ---------");
+                        t = Some(p)
+                    }
+                }
+                _ => {
+                    ts.push((ident, expr));
+                }
+            }
+        }
+        let ts = quote! {plepps};
+        match t {
+            Some(t) => Ok((t, ts.into())),
+            _ => Err(parse::Error::new(
+                input.span(),
+                format!("{} not found", keyword),
+            )),
+        }
+    })
+    .parse2(input)
+}
+
+#[test]
+fn test_parse_attr() {
+    let q = quote! {passes = pass1 };
+    let r: parse::Result<(Ident, TokenStream)> = parse_attr(q, "passes");
+
+    // println!("ok {:?}", r.0);
+}
 // Container for comma separated sequences of type T
 pub(crate) struct CommaSep<T> {
     pub elems: Vec<T>,
@@ -44,7 +95,6 @@ where
 }
 
 fn parse(attr: TokenStream2, item: TokenStream2) -> Result<TokenStream2, syn::parse::Error> {
-    // println!("attr: {:?}", attr);
     let mut attrs: Attr = syn::parse2(attr)?;
     let module: Module = syn::parse2(item)?;
     let mut next_pass = None;
@@ -52,27 +102,23 @@ fn parse(attr: TokenStream2, item: TokenStream2) -> Result<TokenStream2, syn::pa
     let mut other_attrs = vec![];
     for (id, e) in &mut attrs.attrs {
         match &*id.to_string() {
-            "passes" => {
-                println!("passes found");
-                println!("e {:?}", e);
+            "passes" => match e {
+                Expr::Array(a) => {
+                    let a = a.elems.clone();
 
-                match e {
-                    Expr::Array(a) => {
-                        let a = a.elems.clone();
-                        println!("a---- {:?}", a);
-                        let q = quote! {#a};
-                        let mut idents = syn::parse::<CommaSep<Ident>>(q.into())?;
-                        println!("idents {:?}", idents.elems);
-                        next_pass = idents.remove_first();
-                        next_passes = idents.elems;
-                    }
-                    _ => panic!("RTIC ICE"),
+                    let q = quote! {#a};
+                    let mut idents = syn::parse::<CommaSep<Ident>>(q.into())?;
+
+                    next_pass = idents.remove_first();
+                    next_passes = idents.elems;
                 }
-            }
+                _ => panic!("RTIC ICE"),
+            },
             _ => other_attrs.push((id, e)),
         }
     }
 
+    // here we should report error instead of panic
     let next_pass = next_pass.unwrap();
     let items = module.items;
 
@@ -103,14 +149,12 @@ impl Parse for Attr {
         let pun: Punctuated<syn::ExprAssign, Token![,]> =
             input.parse_terminated(syn::ExprAssign::parse)?;
 
-        println!("here");
         let mut attrs = vec![];
         for ea in pun {
             let l = ea.left;
             let l = quote! {#l};
 
             let id = syn::parse::<Ident>(l.into())?;
-            println!("ident {}, {:?}", id, ea.right);
             attrs.push((id, *ea.right));
         }
 
@@ -150,7 +194,6 @@ impl Parse for Module {
 
 #[proc_macro_attribute]
 pub fn app(attr: TokenStream, item: TokenStream) -> TokenStream {
-    println!("app_start");
     let ts = match parse(attr.into(), item.into()) {
         Err(e) => return e.to_compile_error().into(),
         Ok(x) => x,
@@ -160,6 +203,6 @@ pub fn app(attr: TokenStream, item: TokenStream) -> TokenStream {
     if std::path::Path::new("target").exists() {
         fs::write("target/ts.rs", ts.to_string()).ok();
     }
-    println!("app_end");
+
     ts.into()
 }

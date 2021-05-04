@@ -29,8 +29,7 @@
 				"$rustc"
 			],
 			"group": "build",
-			"label": "rust: cargo run
-			"
+			"label": "rust: cargo run"
 		}
 	]
 }
