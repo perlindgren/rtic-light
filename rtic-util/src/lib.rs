@@ -1,3 +1,5 @@
+use std::collections::btree_map::ValuesMut;
+
 use syn::{
     braced, /* parenthesized, */
     parse::{self, Parse, ParseStream, Parser},
@@ -7,50 +9,50 @@ use syn::{
     Attribute, Expr, ExprAssign, Ident, Item, Result, /*  LitBool, LitInt, Path*/ Token,
 };
 
-use proc_macro2::{Punct, TokenStream as TokenStream2};
+use proc_macro2::{Punct, Span, TokenStream as TokenStream2};
 
 use quote::{quote, ToTokens};
 
-pub fn parse_attr<'a, T>(
-    input: ParseStream<'a>,
-    keyword: &str,
-) -> parse::Result<(T, ParseStream<'a>)>
-where
-    T: Parse,
-{
-    let mut ts = vec![];
-    let mut t: Option<T> = None;
-    while !input.is_empty() {
-        let ident: Ident = input.parse()?;
-        let _: Token![=] = input.parse()?;
-        let expr: Expr = input.parse()?;
+// pub fn parse_attr<'a, T>(
+//     input: ParseStream<'a>,
+//     keyword: &str,
+// ) -> parse::Result<(T, ParseStream<'a>)>
+// where
+//     T: Parse,
+// {
+//     let mut ts = vec![];
+//     let mut t: Option<T> = None;
+//     while !input.is_empty() {
+//         let ident: Ident = input.parse()?;
+//         let _: Token![=] = input.parse()?;
+//         let expr: Expr = input.parse()?;
 
-        match &*ident.to_string() {
-            keyword => {
-                println!("id found");
-                if t.is_some() {
-                    return Err(parse::Error::new(ident.span(), "Already defined"));
-                } else {
-                    let mut e = quote! {#expr};
-                    let p = syn::parse::<T>(e.into())?;
-                    println!("here ---------");
-                    t = Some(p)
-                }
-            }
-            _ => {
-                ts.push((ident, expr));
-            }
-        }
-    }
+//         match &*ident.to_string() {
+//             keyword => {
+//                 println!("id found");
+//                 if t.is_some() {
+//                     return Err(parse::Error::new(ident.span(), "Already defined"));
+//                 } else {
+//                     let mut e = quote! {#expr};
+//                     let p = syn::parse::<T>(e.into())?;
+//                     println!("here ---------");
+//                     t = Some(p)
+//                 }
+//             }
+//             _ => {
+//                 ts.push((ident, expr));
+//             }
+//         }
+//     }
 
-    match t {
-        Some(t) => Ok((t, input)),
-        _ => Err(parse::Error::new(
-            input.span(),
-            format!("{} not found", keyword),
-        )),
-    }
-}
+//     match t {
+//         Some(t) => Ok((t, input)),
+//         _ => Err(parse::Error::new(
+//             input.span(),
+//             format!("{} not found", keyword),
+//         )),
+//     }
+// }
 
 #[derive(Debug)]
 pub struct Attrs {
@@ -81,7 +83,7 @@ where
 #[derive(Debug)]
 struct IdT<T>
 where
-    T: Parse,
+    T: Parse + Clone,
 {
     id: Ident,
     expr: T,
@@ -89,7 +91,7 @@ where
 
 impl<T> Parse for IdT<T>
 where
-    T: Parse,
+    T: Parse + Clone,
 {
     fn parse(input: ParseStream) -> Result<Self> {
         let id: Ident = input.parse()?;
@@ -150,6 +152,91 @@ pub fn app_attr(input: TokenStream2) -> Result<AppAttr> {
         // next_pass: Ident::new(&"hello", syn::span::new()),
         other_attrs,
     })
+}
+
+struct IdExpr(Vec<IdT<Expr>>);
+
+impl Parse for IdExpr {
+    fn parse(input: ParseStream) -> Result<IdExpr> {
+        let attrs: Attrs = input.parse()?;
+        let mut data = vec![];
+
+        for attr in attrs.attrs {
+            let res: Punctuated<IdT<Expr>, Token![,]> =
+                attr.parse_args_with(Punctuated::parse_terminated)?;
+
+            for pair in res.into_pairs() {
+                data.push(pair.into_value())
+            }
+        }
+        Ok(IdExpr(data))
+    }
+}
+
+fn attr<T>(attrs: IdExpr, keyword: &str, span: Span) -> Result<T>
+where
+    T: Parse,
+{
+    let mut res = None;
+    for attr in attrs.0 {
+        if keyword == attr.id.to_string() {
+            let t = attr.expr.to_token_stream();
+
+            let p: T = syn::parse2(t.clone())?;
+            if res.is_some() {
+                return Err(parse::Error::new(t.span(), "Already defined"));
+            } else {
+                res = Some(p);
+            }
+        }
+    }
+    match res {
+        Some(p) => Ok(p),
+        _ => Err(parse::Error::new(
+            span,
+            format!("Keyword {} not found", keyword),
+        )),
+    }
+}
+
+#[test]
+fn test_parse_attr() {
+    let q: TokenStream2 = quote!(#[task(priority = 5, task_local = [plepps])]);
+
+    let v: IdExpr = syn::parse2(q.clone()).unwrap();
+    let a: Result<syn::LitInt> = attr(v, "task_local", q.span());
+
+    println!("a {:?}", a);
+}
+
+#[test]
+fn test_parse_attr2() {
+    let q: TokenStream2 = quote!(#[task(priority = 5, task_local = [plepps])]);
+
+    let v: IdExpr = syn::parse2(q.clone()).unwrap();
+    let a: Result<syn::LitInt> = attr(v, "priority", q.span());
+
+    println!("a {:?}", a);
+}
+
+#[test]
+fn test_parse_attr3() {
+    let q: TokenStream2 = quote!(#[task(priority = 5, task_local = [plepps])]);
+
+    let v: IdExpr = syn::parse2(q.clone()).unwrap();
+    let a: Result<syn::LitInt> = attr(v, "priorit", q.span());
+
+    println!("a {:?}", a);
+}
+
+#[test]
+fn test_parse_attr4() {
+    let q: TokenStream2 = quote!(#[task(priority = 5, priority = 7)]);
+
+    let v: IdExpr = syn::parse2(q.clone()).unwrap();
+    let a: Result<syn::LitInt> = attr(v, "priority", q.span());
+
+    println!("a {:?}", a);
 }
 
 #[test]
