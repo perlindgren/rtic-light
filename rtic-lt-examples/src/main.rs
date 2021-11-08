@@ -1,5 +1,4 @@
-use pass1::*;
-use pass2::*;
+use pass2::pass2;
 use rtic::app;
 
 #[app(passes = [pass2, oeuntheuo], plepps = 7)]

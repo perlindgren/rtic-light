@@ -1,12 +1,12 @@
-[package]
-name = "rtic-light"
-version = "0.1.0"
-authors = ["Per Lindgren <per.lindgren@ltu.se>"]
-edition = "2018"
+[workspace]
+# Not sure exactly how a workspace should look like, hmm...
+#version = "0.1.0"
+#authors = ["Per Lindgren <per.lindgren@ltu.se>"]
+#edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-pass1 = {path = "pass1"}
-pass2 = {path = "pass2"}
-rtic = {path = "rtic"}
+members = [
+    "pass1",
+    "pass2",
+    "rtic",
+    "rtic-lt-examples",
+]
